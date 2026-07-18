@@ -1,12 +1,22 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from entity import ChatRequest, ChatResponse
 from agents.tools import get_hotels, get_flights
 from agents.graph import graph
+from agents.mcp_client import load_tools
 
 conversation_history_messages = []
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.hotel_tools, app.state.flight_tools = await load_tools()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -20,6 +30,11 @@ app.add_middleware(
 @app.get("/")
 async def hello():
     return {"message": "Hello, World!"}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 
 @app.get("/hotels")
