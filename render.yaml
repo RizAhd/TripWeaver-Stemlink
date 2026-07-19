@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: tripweaver-backend
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: CONVEX_BASE_URL
+        value: https://standing-fish-574.convex.site
+
+  - type: web
+    name: tripweaver-frontend
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: frontend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: BACKEND_URL
+        fromService:
+          name: tripweaver-backend
+          type: web
+          property: host

@@ -5,10 +5,17 @@ from typing import AsyncIterator, Dict, List
 import gradio as gr
 import httpx
 
-BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
+def backend_url() -> str:
+    url = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").strip().rstrip("/")
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = "https://" + url
+    return url
+
+
+BACKEND_URL = backend_url()
 STREAM_URL = BACKEND_URL + "/chat/stream"
 
-REQUEST_TIMEOUT = httpx.Timeout(180.0, connect=15.0)
+REQUEST_TIMEOUT = httpx.Timeout(180.0, connect=90.0)
 
 EMPTY_RESULTS = {"hotel_results": [], "flight_results": [], "bookings": []}
 
