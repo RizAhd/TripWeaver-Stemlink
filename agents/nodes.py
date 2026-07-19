@@ -93,6 +93,81 @@ def collect_results(state: GraphState, messages: List[AnyMessage]) -> dict:
     return collected
 
 
+def _hotel_line(index: int, hotel: dict) -> str:
+    return "%d. %s in %s, %s star, %s %s per night, %s rooms left, id %s" % (
+        index,
+        hotel.get("name", "unknown hotel"),
+        hotel.get("city", "unknown city"),
+        hotel.get("starRating", "?"),
+        hotel.get("currency", ""),
+        hotel.get("pricePerNight", "?"),
+        hotel.get("availableRooms", "?"),
+        hotel.get("id", ""),
+    )
+
+
+def _flight_line(index: int, flight: dict) -> str:
+    origin = flight.get("origin", {})
+    destination = flight.get("destination", {})
+    return "%d. %s %s from %s to %s on %s, %s to %s, %s %s, %s seats left, id %s" % (
+        index,
+        flight.get("airline", "unknown airline"),
+        flight.get("flightNumber", ""),
+        origin.get("airport", "?") if isinstance(origin, dict) else origin,
+        destination.get("airport", "?") if isinstance(destination, dict) else destination,
+        flight.get("flightDate", "?"),
+        flight.get("departureTime", "?"),
+        flight.get("arrivalTime", "?"),
+        flight.get("currency", ""),
+        flight.get("price", "?"),
+        flight.get("availableSeats", "?"),
+        flight.get("id", ""),
+    )
+
+
+def _booking_line(booking: dict) -> str:
+    parts = ["reference %s" % booking.get("bookingReference", "unknown")]
+    if booking.get("status"):
+        parts.append("status %s" % booking["status"])
+    if booking.get("numberOfNights"):
+        parts.append("%s nights" % booking["numberOfNights"])
+    if booking.get("seatNumber"):
+        parts.append("seat %s" % booking["seatNumber"])
+    if booking.get("totalPrice"):
+        parts.append("total %s" % booking["totalPrice"])
+    return "- " + ", ".join(parts)
+
+
+def results_context(state: GraphState) -> Optional[SystemMessage]:
+    sections = []
+
+    hotels = state.get("hotel_results") or []
+    if hotels:
+        lines = [_hotel_line(i, h) for i, h in enumerate(hotels[:10], start=1)]
+        sections.append("Hotels already shown to the traveller, in this order:\n" + "\n".join(lines))
+
+    flights = state.get("flight_results") or []
+    if flights:
+        lines = [_flight_line(i, f) for i, f in enumerate(flights[:10], start=1)]
+        sections.append("Flights already shown to the traveller, in this order:\n" + "\n".join(lines))
+
+    bookings = state.get("bookings") or []
+    if bookings:
+        lines = [_booking_line(b) for b in bookings]
+        sections.append("Bookings confirmed so far in this conversation:\n" + "\n".join(lines))
+
+    if not sections:
+        return None
+
+    return SystemMessage(
+        content=(
+            "\n\n".join(sections)
+            + "\n\nWhen the traveller refers to an option by its position, such as the "
+            "second hotel, take the id from this list rather than searching again."
+        )
+    )
+
+
 async def router(state: GraphState) -> dict:
     writer = get_stream_writer()
     writer({"type": "activity", "state": "ROUTING", "label": "Understanding your request..."})
@@ -132,7 +207,12 @@ def make_agent(tools: List[BaseTool], prompt_template: str, activity_label: str)
         writer = get_stream_writer()
         writer({"type": "activity", "state": "RESPONDING", "label": activity_label})
 
-        messages = [SystemMessage(content=agent_prompt(prompt_template))] + list(state["messages"])
+        messages = [SystemMessage(content=agent_prompt(prompt_template))]
+        context = results_context(state)
+        if context is not None:
+            messages.append(context)
+        messages.extend(state["messages"])
+
         response = await model.ainvoke(messages)
         _announce(state, response, writer)
         return {"messages": [response]}

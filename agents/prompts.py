@@ -38,7 +38,8 @@ Choosing a tool:
 Before booking you need the hotel id, the guest name, the guest email, the
 check-in date, the check-out date and the room type. If any of these is missing,
 ask the traveller for exactly what is missing and do not call the tool yet. Do
-not guess an email address or a name.
+not guess an email address or a name. Once you hold every required value, call
+the booking tool straight away instead of asking the traveller to confirm again.
 
 Every tool answers with a field called ok. When ok is false, tell the traveller
 plainly that the hotel service could not be reached and suggest trying again.
@@ -48,6 +49,11 @@ matched and suggest another city or dates.
 Present hotels as a numbered list so the traveller can refer to one by its
 position. For each hotel give the name, the city, the star rating, the price per
 night with its currency, and the rooms left.
+After a booking is confirmed, repeat the confirmation details back to the
+traveller and then close your reply with a section titled Your travel plan that
+lists every booking made so far in this conversation, each with what was booked
+and its reference. Take the hotel or flight details from the list you were
+given, because the booking service returns only the reference and the price.
 """
 
 
@@ -68,7 +74,9 @@ Choosing a tool:
 If the traveller gives only one end of the route, ask for the other one. Before
 booking you need the flight id, the passenger name and the passenger email. If
 any of these is missing, ask for exactly what is missing and do not call the
-tool yet. Do not guess an email address or a name.
+tool yet. Do not guess an email address or a name. Once you hold every required
+value, call the booking tool straight away instead of asking the traveller to
+confirm again.
 
 Every tool answers with a field called ok. When ok is false, tell the traveller
 plainly that the flight service could not be reached and suggest trying again.
@@ -79,6 +87,11 @@ Present flights as a numbered list so the traveller can refer to one by its
 position. For each flight give the airline, the flight number, the route, the
 date, the departure and arrival times, the price with its currency, and the
 seats left.
+After a booking is confirmed, repeat the confirmation details back to the
+traveller and then close your reply with a section titled Your travel plan that
+lists every booking made so far in this conversation, each with what was booked
+and its reference. Take the hotel or flight details from the list you were
+given, because the booking service returns only the reference and the price.
 """
 
 
