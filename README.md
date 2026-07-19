@@ -60,6 +60,7 @@ Copy `.env.example` to `.env` and fill in the values. Nothing here is committed.
 |---|---|---|
 | `OPENAI_API_KEY` | Key for the chat model | `sk-proj-...` |
 | `OPENAI_MODEL` | Model name | `gpt-4o-mini` |
+| `OPENAI_TRANSCRIBE_MODEL` | Model used to turn a recording into text | `gpt-4o-mini-transcribe` |
 | `CONVEX_BASE_URL` | Travel provider the hotel and flight servers call | `https://standing-fish-574.convex.site` |
 | `HOTEL_MCP_URL` | Where the backend reaches the hotel MCP server | `http://127.0.0.1:8001/mcp` |
 | `FLIGHT_MCP_URL` | Where the backend reaches the flight MCP server | `http://127.0.0.1:8002/mcp` |
@@ -185,6 +186,34 @@ ports, so they are reachable by the agents and never exposed publicly.
 
 Check the backend with `curl https://<your-backend>.onrender.com/health`, which
 answers `{"status": "ok"}`.
+
+## Speaking instead of typing
+
+This part is extra. It is not asked for in the brief, and nothing required
+depends on it.
+
+There is a record button under the conversation. Speak, stop, and what you said
+appears in the ask box. It is left there rather than sent, for two reasons.
+Speech gets three letter airport codes wrong often enough to matter, and the
+agents can make a real booking, so a misheard "book the first one" should not
+go anywhere on its own. Whatever you had already typed is kept and the new
+words are added to the end, so you can type part of a request and say the rest.
+
+The recording is sent to `POST /transcribe` on the backend, which passes it to
+OpenAI and returns `{ok, text, error}`. Doing it on the backend keeps the API
+key on one service. The frontend never holds a key.
+
+Two things are worth knowing:
+
+The browser hands the recording over named `audio.wav` no matter what it really
+is. Chrome records WebM, Firefox records Ogg, Safari records MP4. OpenAI decides
+how to read the file partly from that name, so the backend ignores it and works
+the container out from the first few bytes instead.
+
+The OpenAI project needs the speech models switched on. They are separate from
+the chat models, and a project can have `gpt-4o-mini` without having
+`gpt-4o-mini-transcribe`. If they are off, the record button still works and
+simply reports that voice is unavailable. Everything else is unaffected.
 
 ## User guide
 
