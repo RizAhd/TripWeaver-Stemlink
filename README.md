@@ -1,13 +1,3 @@
----
-title: TripWeaver Backend
-emoji: 🧭
-colorFrom: blue
-colorTo: green
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # TripWeaver
 
 TripWeaver is a multi agent travel planning assistant. A traveller describes
@@ -19,8 +9,13 @@ agent code.
 
 ## Live demo
 
-- Frontend: add the URL of your Gradio Space here
-- Backend: add the URL of your Docker Space here
+- Frontend: https://tripweaver-frontend-lg5y.onrender.com
+- Backend: https://tripweaver-backend-xjpr.onrender.com
+
+Both run on Render's free tier, which puts an instance to sleep after fifteen
+minutes without traffic. The first request after a quiet period takes about a
+minute while the instance wakes up. Open both links a few minutes before a
+demonstration and they will respond immediately.
 
 ## Architecture
 
@@ -134,31 +129,29 @@ time the backend starts. No node, edge, or prompt has to change.
 
 ## Deploying
 
-Both halves run on Hugging Face Spaces.
+Both services are described in `render.yaml`, so Render creates them together
+from one blueprint rather than being configured by hand.
 
-Backend, as a Docker Space:
+1. Sign in to Render and connect this GitHub repository. No card is needed for
+   the free plan.
+2. Go to Blueprints and create a new blueprint instance from this repository.
+   Render reads `render.yaml` and offers both services.
+3. Supply `OPENAI_API_KEY` when prompted. The model name and the travel
+   provider URL are already in the blueprint.
+4. Apply. The backend builds from the Dockerfile, the frontend installs from
+   `frontend/requirements.txt`.
+5. Once the backend is live, copy its address into the frontend's `BACKEND_URL`
+   variable and redeploy the frontend.
 
-1. Create a Space and choose the Docker SDK.
-2. Add `OPENAI_API_KEY` and `CONVEX_BASE_URL` as Space secrets.
-3. Push this repository to the Space. The frontmatter at the top of this file
-   tells the Space to build the Dockerfile and serve port 7860.
-4. Check `https://<your-backend-space>.hf.space/health`.
+Step five is manual because a service address is only known after its first
+deploy, and Render's own service reference resolves to an internal name that
+the public internet cannot reach.
 
-Frontend, as a Gradio Space:
+The backend container runs the two MCP servers alongside the API on loopback
+ports, so they are reachable by the agents and never exposed publicly.
 
-1. Create a second Space and choose the Gradio SDK.
-2. Add `BACKEND_URL` as a Space secret, pointing at the backend Space.
-3. Push only the `frontend` folder:
-
-```
-git subtree push --prefix frontend frontend-space main
-```
-
-The backend container runs the two MCP servers alongside the API, so they are
-reachable on loopback and are never exposed publicly.
-
-A free Space sleeps when it is idle, so the first message after a quiet period
-can take around thirty seconds while it wakes up.
+Check the backend with `curl https://<your-backend>.onrender.com/health`, which
+answers `{"status": "ok"}`.
 
 ## User guide
 
