@@ -24,7 +24,4 @@ services:
     startCommand: python app.py
     envVars:
       - key: BACKEND_URL
-        fromService:
-          name: tripweaver-backend
-          type: web
-          property: host
+        value: https://tripweaver-backend-xjpr.onrender.com
