@@ -41,7 +41,12 @@ CSS = """
 }
 #tripweaver-header p {margin: 0; color: #5b6b7a; font-size: 0.95rem;}
 
-#tripweaver-chat {border: none; background: transparent; min-height: 300px;}
+#tripweaver-chat {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  min-height: 300px;
+}
 
 @supports (height: 100dvh) {
   #tripweaver-chat {height: 60dvh !important;}
