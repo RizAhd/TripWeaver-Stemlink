@@ -110,12 +110,41 @@ async def stream_events(message: str, history: List[dict], results: dict) -> Asy
                     yield json.loads(line[6:])
 
 
-def panel(label: str) -> dict:
+PHASE_ICONS = {
+    "ROUTING": "*",
+    "SEARCHING": ">",
+    "BOOKING": "+",
+    "CLARIFYING": "?",
+    "RESPONDING": "-",
+}
+
+
+def panel(state: str, label: str) -> dict:
+    icon = PHASE_ICONS.get(state, "-")
     return {
         "role": "assistant",
         "content": "",
-        "metadata": {"title": label, "status": "pending"},
+        "metadata": {"title": "%s  %s" % (icon, label), "status": "pending"},
     }
+
+
+def note_tool(panels: List[dict], pending: dict, event: dict) -> None:
+    if not panels:
+        return
+
+    call_id = event.get("id", "")
+    name = event.get("name", "tool")
+    status = event.get("status", "")
+
+    if status == "INVOKED":
+        pending[call_id] = name
+        return
+
+    outcome = "failed" if status == "FAILED" else "done"
+    panels[-1]["metadata"]["log"] = "%s %s" % (pending.pop(call_id, name), outcome)
+    if status == "FAILED":
+        panels[-1]["metadata"]["title"] = panels[-1]["metadata"]["title"].split("  ", 1)[-1]
+        panels[-1]["metadata"]["title"] = "!  " + panels[-1]["metadata"]["title"]
 
 
 def settle(panels: List[dict]) -> None:
@@ -132,6 +161,7 @@ def rendered(panels: List[dict], reply: str) -> List[dict]:
 async def respond(message: str, history: List[dict], results: dict):
     results = results or dict(EMPTY_RESULTS)
     panels: List[dict] = []
+    pending_tools: Dict[str, str] = {}
     reply = ""
 
     try:
@@ -140,14 +170,11 @@ async def respond(message: str, history: List[dict], results: dict):
 
             if kind == "activity":
                 settle(panels)
-                panels.append(panel(event.get("label", event.get("state", "Working..."))))
+                state = event.get("state", "")
+                panels.append(panel(state, event.get("label", state or "Working...")))
 
             elif kind == "tool":
-                if panels:
-                    panels[-1]["metadata"]["log"] = "%s %s" % (
-                        event.get("name", "tool"),
-                        event.get("status", "").lower(),
-                    )
+                note_tool(panels, pending_tools, event)
 
             elif kind == "token":
                 reply += event.get("text", "")
