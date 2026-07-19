@@ -5,6 +5,7 @@ from typing import AsyncIterator, Dict, List
 import gradio as gr
 import httpx
 
+import cards
 from theme import HEAD, TripWeaverTheme
 
 def backend_url() -> str:
@@ -161,7 +162,7 @@ async def respond(message: str, history: List[dict], results: dict):
             elif kind == "error":
                 reply = event.get("message", "Something went wrong. Please try again.")
 
-            yield rendered(panels, reply), results
+            yield rendered(panels, reply), results, cards.render(results)
 
     except httpx.HTTPStatusError as exc:
         settle(panels)
@@ -172,17 +173,17 @@ async def respond(message: str, history: List[dict], results: dict):
             )
         else:
             message = "The travel planner returned an error (%s). Please try again." % exc.response.status_code
-        yield rendered(panels, message), results
+        yield rendered(panels, message), results, cards.render(results)
         return
     except httpx.RequestError:
         settle(panels)
-        yield rendered(panels, "I cannot reach the travel planner right now. Please try again shortly."), results
+        yield rendered(panels, "I cannot reach the travel planner right now. Please try again shortly."), results, cards.render(results)
         return
 
     settle(panels)
     if not reply:
         reply = "I did not get a reply from the travel planner. Please try again."
-    yield rendered(panels, reply), results
+    yield rendered(panels, reply), results, cards.render(results)
 
 
 EMPTY_STATE = """
@@ -221,11 +222,18 @@ def build_demo() -> gr.Blocks:
             elem_id="tripweaver-chat",
         )
 
+        results_panel = gr.HTML(
+            value="",
+            css_template=cards.CARD_CSS,
+            apply_default_css=False,
+            elem_id="tripweaver-results",
+        )
+
         gr.ChatInterface(
             fn=respond,
             chatbot=chatbot,
             additional_inputs=[results_state],
-            additional_outputs=[results_state],
+            additional_outputs=[results_state, results_panel],
             examples=STARTERS,
             api_name="chat",
         )
