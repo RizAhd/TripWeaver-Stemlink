@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 from typing import AsyncIterator, Dict, List
@@ -19,6 +20,10 @@ BACKEND_URL = backend_url()
 STREAM_URL = BACKEND_URL + "/chat/stream"
 
 REQUEST_TIMEOUT = httpx.Timeout(180.0, connect=90.0)
+
+STARTING_UP = (502, 503, 504)
+TRIES = 4
+PAUSE_BETWEEN_TRIES = 20
 
 EMPTY_RESULTS = {"hotel_results": [], "flight_results": [], "bookings": []}
 
@@ -116,6 +121,7 @@ PHASE_ICONS = {
     "BOOKING": "+",
     "CLARIFYING": "?",
     "RESPONDING": "-",
+    "WAKING": "~",
 }
 
 
@@ -160,57 +166,68 @@ def rendered(panels: List[dict], reply: str) -> List[dict]:
 
 async def respond(message: str, history: List[dict], results: dict):
     results = results or dict(EMPTY_RESULTS)
-    panels: List[dict] = []
-    pending_tools: Dict[str, str] = {}
-    reply = ""
 
-    try:
-        async for event in stream_events(message, history, results):
-            kind = event.get("type")
+    for attempt in range(TRIES):
+        panels: List[dict] = []
+        pending_tools: Dict[str, str] = {}
+        reply = ""
 
-            if kind == "activity":
-                settle(panels)
-                state = event.get("state", "")
-                panels.append(panel(state, event.get("label", state or "Working...")))
+        try:
+            async for event in stream_events(message, history, results):
+                kind = event.get("type")
 
-            elif kind == "tool":
-                note_tool(panels, pending_tools, event)
+                if kind == "activity":
+                    settle(panels)
+                    state = event.get("state", "")
+                    panels.append(panel(state, event.get("label", state or "Working...")))
 
-            elif kind == "token":
-                reply += event.get("text", "")
+                elif kind == "tool":
+                    note_tool(panels, pending_tools, event)
 
-            elif kind == "results":
-                results = {
-                    "hotel_results": event.get("hotel_results", []),
-                    "flight_results": event.get("flight_results", []),
-                    "bookings": event.get("bookings", []),
-                }
+                elif kind == "token":
+                    reply += event.get("text", "")
 
-            elif kind == "error":
-                reply = event.get("message", "Something went wrong. Please try again.")
+                elif kind == "results":
+                    results = {
+                        "hotel_results": event.get("hotel_results", []),
+                        "flight_results": event.get("flight_results", []),
+                        "bookings": event.get("bookings", []),
+                    }
 
-            yield rendered(panels, reply), results, cards.render(results)
+                elif kind == "error":
+                    reply = event.get("message", "Something went wrong. Please try again.")
 
-    except httpx.HTTPStatusError as exc:
+                yield rendered(panels, reply), results, cards.render(results)
+
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            settle(panels)
+            if status in STARTING_UP and not reply and attempt + 1 < TRIES:
+                waking = [panel("WAKING", "Waking the travel planner, this can take a minute...")]
+                yield rendered(waking, ""), results, cards.render(results)
+                await asyncio.sleep(PAUSE_BETWEEN_TRIES)
+                continue
+            if status == 404:
+                notice = (
+                    "The travel planner is not answering at %s. Check that BACKEND_URL "
+                    "points at the deployed backend." % BACKEND_URL
+                )
+            elif status in STARTING_UP:
+                notice = "The travel planner is still starting up. Please send that again in a moment."
+            else:
+                notice = "The travel planner returned an error (%s). Please try again." % status
+            yield rendered(panels, notice), results, cards.render(results)
+            return
+        except httpx.RequestError:
+            settle(panels)
+            yield rendered(panels, "I cannot reach the travel planner right now. Please try again shortly."), results, cards.render(results)
+            return
+
         settle(panels)
-        if exc.response.status_code == 404:
-            message = (
-                "The travel planner is not answering at %s. Check that BACKEND_URL "
-                "points at the deployed backend." % BACKEND_URL
-            )
-        else:
-            message = "The travel planner returned an error (%s). Please try again." % exc.response.status_code
-        yield rendered(panels, message), results, cards.render(results)
+        if not reply:
+            reply = "I did not get a reply from the travel planner. Please try again."
+        yield rendered(panels, reply), results, cards.render(results)
         return
-    except httpx.RequestError:
-        settle(panels)
-        yield rendered(panels, "I cannot reach the travel planner right now. Please try again shortly."), results, cards.render(results)
-        return
-
-    settle(panels)
-    if not reply:
-        reply = "I did not get a reply from the travel planner. Please try again."
-    yield rendered(panels, reply), results, cards.render(results)
 
 
 EMPTY_STATE = """
