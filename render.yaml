@@ -10,7 +10,7 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
-        value: gpt-4o-mini
+        value: gpt-4o
       - key: CONVEX_BASE_URL
         value: https://standing-fish-574.convex.site
 
