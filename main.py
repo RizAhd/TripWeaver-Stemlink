@@ -14,6 +14,10 @@ from agents.mcp_client import load_tools
 
 USER_FACING_NODES = ("hotel_agent", "flight_agent", "general_qa", "ambiguous")
 
+GRAPH_CONFIG = {"recursion_limit": 12}
+
+UNEXPECTED_ERROR = "Something went wrong while planning your trip. Please try again."
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -78,7 +82,10 @@ async def health():
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    result = await app.state.graph.ainvoke(build_state(request))
+    try:
+        result = await app.state.graph.ainvoke(build_state(request), config=GRAPH_CONFIG)
+    except Exception:
+        return ChatResponse(response=UNEXPECTED_ERROR)
 
     return ChatResponse(
         response=message_text(result["messages"][-1]),
@@ -98,7 +105,9 @@ async def chat_stream(request: ChatRequest):
 
     try:
         async for mode, chunk in app.state.graph.astream(
-            build_state(request), stream_mode=["custom", "messages", "updates"]
+            build_state(request),
+            stream_mode=["custom", "messages", "updates"],
+            config=GRAPH_CONFIG,
         ):
             if mode == "custom":
                 yield ServerSentEvent(data=chunk)
@@ -127,10 +136,7 @@ async def chat_stream(request: ChatRequest):
         return
     except Exception:
         yield ServerSentEvent(
-            data={
-                "type": "error",
-                "message": "Something went wrong while planning your trip. Please try again.",
-            }
+            data={"type": "error", "message": UNEXPECTED_ERROR}
         )
         yield ServerSentEvent(data={"type": "done"})
 
