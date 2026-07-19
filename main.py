@@ -1,18 +1,19 @@
 from contextlib import asynccontextmanager
+from typing import List
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from entity import ChatRequest, ChatResponse
-from agents.tools import get_hotels, get_flights
-from agents.graph import graph
-from agents.mcp_client import load_tools
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 
-conversation_history_messages = []
+from entity import ChatRequest, ChatResponse
+from agents.graph import build_graph
+from agents.mcp_client import load_tools
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.hotel_tools, app.state.flight_tools = await load_tools()
+    hotel_tools, flight_tools = await load_tools()
+    app.state.graph = build_graph(hotel_tools, flight_tools)
     yield
 
 
@@ -27,6 +28,39 @@ app.add_middleware(
 )
 
 
+def message_text(message: AnyMessage) -> str:
+    content = message.content
+    if isinstance(content, str):
+        return content
+
+    parts = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "text":
+            parts.append(block.get("text", ""))
+    return "".join(parts)
+
+
+def build_messages(request: ChatRequest) -> List[AnyMessage]:
+    messages: List[AnyMessage] = []
+    for turn in request.history:
+        if turn.role == "user":
+            messages.append(HumanMessage(content=turn.content))
+        else:
+            messages.append(AIMessage(content=turn.content))
+    messages.append(HumanMessage(content=request.message))
+    return messages
+
+
+def build_state(request: ChatRequest) -> dict:
+    return {
+        "messages": build_messages(request),
+        "intent": "",
+        "hotel_results": request.hotel_results,
+        "flight_results": request.flight_results,
+        "bookings": request.bookings,
+    }
+
+
 @app.get("/")
 async def hello():
     return {"message": "Hello, World!"}
@@ -37,58 +71,15 @@ async def health():
     return {"status": "ok"}
 
 
-@app.get("/hotels")
-async def list_hotels():
-    return get_hotels.invoke({})
-
-
-@app.get("/flights")
-async def list_flights():
-    return get_flights.invoke({})
-
-
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-
-    recent_pairs = conversation_history_messages[-3:]
-    flattened_messages = []
-    for user_msg, assistant_msg in recent_pairs:
-        flattened_messages.append(user_msg)
-        flattened_messages.append(assistant_msg)
-    flattened_messages.append(request.message)
-
-    initial_state = {
-        "messages": flattened_messages,
-        "intent": "",
-        "sub_action": "",
-        "city": None,
-        "check_in": None,
-        "check_out": None,
-        "origin": None,
-        "destination": None,
-        "flight_date": None,
-        "hotel_id": None,
-        "guest_name": None,
-        "guest_email": None,
-        "room_type": None,
-        "flight_id": None,
-        "passenger_name": None,
-        "passenger_email": None,
-        "hotel_results": [],
-        "flight_results": [],
-        "response_text": "",
-    }
-
-    result = graph.invoke(initial_state)
-
-    response_text = result.get("response_text", "Something went wrong. Please try again.")
-
-    conversation_history_messages.append((request.message, response_text))
+    result = await app.state.graph.ainvoke(build_state(request))
 
     return ChatResponse(
-        response=response_text,
-        hotels=result.get("hotel_results", []) or None,
-        flights=result.get("flight_results", []) or None,
+        response=message_text(result["messages"][-1]),
+        hotel_results=result.get("hotel_results", []),
+        flight_results=result.get("flight_results", []),
+        bookings=result.get("bookings", []),
     )
 
 

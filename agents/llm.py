@@ -6,12 +6,11 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 ENV_PATH = BASE_DIR / ".env"
 
-load_dotenv(dotenv_path=ENV_PATH, override=True)
+load_dotenv(dotenv_path=ENV_PATH)
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 llm = ChatOpenAI(
-    model="gpt-4o-mini", 
-    api_key=OPENAI_API_KEY, 
+    model=MODEL_NAME,
     temperature=0
 )
