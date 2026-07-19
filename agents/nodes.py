@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage, AnyMessage, SystemMessage, ToolMe
 from langchain_core.tools import BaseTool
 from langgraph.config import get_stream_writer
 from langgraph.prebuilt import ToolNode
+from langgraph.prebuilt.tool_node import ToolInvocationError
 from pydantic import BaseModel, Field
 
 from .entity import GraphState
@@ -34,6 +35,14 @@ intent_classifier = llm.with_structured_output(IntentDecision)
 
 
 def tool_error_message(exc: Exception) -> str:
+    logger.warning("tool call failed %s: %s", type(exc).__name__, exc)
+
+    if isinstance(exc, ToolInvocationError):
+        return (
+            "That call was missing something the service needs. Ask the traveller for "
+            "the detail that is missing and try again once they have given it."
+        )
+
     return (
         "That travel service could not be reached. Tell the traveller the service "
         "is unavailable right now and suggest trying again shortly."
