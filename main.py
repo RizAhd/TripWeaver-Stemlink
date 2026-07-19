@@ -3,11 +3,16 @@ from typing import List
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import EventSourceResponse
+from fastapi.sse import ServerSentEvent
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from starlette.responses import ClientDisconnect
 
 from entity import ChatRequest, ChatResponse
 from agents.graph import build_graph
 from agents.mcp_client import load_tools
+
+USER_FACING_NODES = ("hotel_agent", "flight_agent", "general_qa", "ambiguous")
 
 
 @asynccontextmanager
@@ -81,6 +86,53 @@ async def chat(request: ChatRequest):
         flight_results=result.get("flight_results", []),
         bookings=result.get("bookings", []),
     )
+
+
+@app.post("/chat/stream", response_class=EventSourceResponse)
+async def chat_stream(request: ChatRequest):
+    results = {
+        "hotel_results": request.hotel_results,
+        "flight_results": request.flight_results,
+        "bookings": request.bookings,
+    }
+
+    try:
+        async for mode, chunk in app.state.graph.astream(
+            build_state(request), stream_mode=["custom", "messages", "updates"]
+        ):
+            if mode == "custom":
+                yield ServerSentEvent(data=chunk)
+                continue
+
+            if mode == "messages":
+                message, meta = chunk
+                if meta.get("langgraph_node") not in USER_FACING_NODES:
+                    continue
+                text = message_text(message)
+                if text:
+                    yield ServerSentEvent(data={"type": "token", "text": text})
+                continue
+
+            for delta in chunk.values():
+                if not isinstance(delta, dict):
+                    continue
+                for key in ("hotel_results", "flight_results", "bookings"):
+                    if key in delta:
+                        results[key] = delta[key]
+
+        yield ServerSentEvent(data={"type": "results", **results})
+        yield ServerSentEvent(data={"type": "done"})
+
+    except ClientDisconnect:
+        return
+    except Exception:
+        yield ServerSentEvent(
+            data={
+                "type": "error",
+                "message": "Something went wrong while planning your trip. Please try again.",
+            }
+        )
+        yield ServerSentEvent(data={"type": "done"})
 
 
 if __name__ == "__main__":
