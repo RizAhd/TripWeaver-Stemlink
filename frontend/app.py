@@ -75,12 +75,57 @@ CSS = """
   background: #f6f3ec !important;
 }
 
+.gradio-container .input-container:has(textarea) {
+  border: 1px solid #e2ded4 !important;
+  border-radius: 24px !important;
+  background: #ffffff !important;
+  box-shadow: 0 1px 2px rgba(18, 33, 46, 0.04);
+  padding: 4px 5px 4px 6px !important;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.gradio-container .input-container:has(textarea):focus-within {
+  border-color: #0e7c86 !important;
+  box-shadow: 0 0 0 3px rgba(14, 124, 134, 0.09);
+}
+.gradio-container .input-container:has(textarea) textarea {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 9px 6px 9px 10px !important;
+}
+.gradio-container .input-container:has(textarea) button {
+  border-radius: 999px !important;
+  min-width: 34px !important;
+  width: 34px !important;
+  height: 34px !important;
+  padding: 0 !important;
+  margin-bottom: 2px;
+}
+
+#tripweaver-mic {border: none !important; background: transparent !important; padding: 0 !important;}
+#tripweaver-mic .wrap, #tripweaver-mic .empty {border: none !important; background: transparent !important;}
+#tripweaver-mic .controls, #tripweaver-mic .waveform-container {border: none !important; background: transparent !important;}
+#tripweaver-mic button {
+  border: 1px solid #e2ded4 !important;
+  border-radius: 999px !important;
+  background: #ffffff !important;
+  color: #5b6b7a !important;
+  font-size: 0.84rem !important;
+  padding: 6px 14px !important;
+  box-shadow: none !important;
+}
+#tripweaver-mic button:hover {border-color: #0e7c86 !important; color: #12212e !important;}
+
+#tripweaver-voice-status {min-height: 0; padding: 0 4px;}
+#tripweaver-voice-status p {margin: 4px 0 0 0; color: #96543f; font-size: 0.83rem;}
+
 @media (max-width: 640px) {
   .gradio-container {padding: 0 10px !important;}
   #tripweaver-header {padding-top: 14px;}
   #tripweaver-header h1 {font-size: 1.55rem;}
   #tripweaver-header p {font-size: 0.88rem;}
   .tw-empty h2 {font-size: 1.15rem;}
+  .gradio-container form, .gradio-container .input-container {border-radius: 20px !important;}
 }
 """
 
