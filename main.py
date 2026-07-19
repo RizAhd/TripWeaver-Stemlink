@@ -3,16 +3,14 @@ import os
 from contextlib import asynccontextmanager
 from typing import List
 
-import speech
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import EventSourceResponse
 from fastapi.sse import ServerSentEvent
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
-from openai import AsyncOpenAI, OpenAIError
 from starlette.responses import ClientDisconnect
 
-from entity import ChatRequest, ChatResponse, TranscriptResponse
+from entity import ChatRequest, ChatResponse
 from agents.graph import build_graph
 from agents.mcp_client import load_tools
 
@@ -40,13 +38,6 @@ async def lifespan(app: FastAPI):
         len(weather_tools),
     )
     app.state.graph = build_graph(hotel_tools, flight_tools, weather_tools)
-
-    try:
-        app.state.transcriber = AsyncOpenAI(timeout=45.0, max_retries=1)
-    except OpenAIError:
-        app.state.transcriber = None
-        logger.warning("voice input is off because no OpenAI key was found")
-
     yield
 
 
@@ -55,7 +46,7 @@ app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -96,12 +87,7 @@ def build_state(request: ChatRequest) -> dict:
 
 @app.get("/")
 async def index():
-    return {
-        "service": "TripWeaver",
-        "health": "/health",
-        "chat": "/chat/stream",
-        "transcribe": "/transcribe",
-    }
+    return {"service": "TripWeaver", "health": "/health", "chat": "/chat/stream"}
 
 
 @app.get("/health")
@@ -114,6 +100,7 @@ async def chat(request: ChatRequest):
     try:
         result = await app.state.graph.ainvoke(build_state(request), config=GRAPH_CONFIG)
     except Exception:
+        logger.exception("chat request failed")
         return ChatResponse(response=UNEXPECTED_ERROR)
 
     return ChatResponse(
@@ -122,22 +109,6 @@ async def chat(request: ChatRequest):
         flight_results=result.get("flight_results", []),
         bookings=result.get("bookings", []),
     )
-
-
-@app.post("/transcribe", response_model=TranscriptResponse)
-async def transcribe(file: UploadFile = File(None)):
-    if file is None:
-        return TranscriptResponse(**speech.failure("No recording was received. Please try again."))
-
-    try:
-        data = await file.read()
-    except Exception:
-        logger.exception("could not read the uploaded recording")
-        return TranscriptResponse(**speech.failure("I could not read that recording. Please try again."))
-
-    result = await speech.transcribe(getattr(app.state, "transcriber", None), data)
-    logger.info("transcribe bytes=%d ok=%s", len(data), result["ok"])
-    return TranscriptResponse(**result)
 
 
 @app.post("/chat/stream", response_class=EventSourceResponse)
