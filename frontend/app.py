@@ -117,9 +117,16 @@ async def respond(message: str, history: List[dict], results: dict):
 
             yield rendered(panels, reply), results
 
-    except httpx.HTTPStatusError:
+    except httpx.HTTPStatusError as exc:
         settle(panels)
-        yield rendered(panels, "The travel planner returned an error. Please try again."), results
+        if exc.response.status_code == 404:
+            message = (
+                "The travel planner is not answering at %s. Check that BACKEND_URL "
+                "points at the deployed backend." % BACKEND_URL
+            )
+        else:
+            message = "The travel planner returned an error (%s). Please try again." % exc.response.status_code
+        yield rendered(panels, message), results
         return
     except httpx.RequestError:
         settle(panels)
