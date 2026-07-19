@@ -12,7 +12,7 @@ ENV HOME=/home/user \
     FLIGHT_MCP_HOST=127.0.0.1 \
     FLIGHT_MCP_PORT=8002 \
     HOTEL_MCP_URL=http://127.0.0.1:8001/mcp \
-    FLIGHT_MCP_URL=http://127.0.0.1:8002/mcp
+    FLIGHT_MCP_URL=http://127.0.0.1:8002/mcp \n    WEATHER_MCP_HOST=127.0.0.1 \n    WEATHER_MCP_PORT=8003 \n    WEATHER_MCP_URL=http://127.0.0.1:8003/mcp
 
 WORKDIR $HOME/app
 
