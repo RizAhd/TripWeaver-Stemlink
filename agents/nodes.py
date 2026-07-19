@@ -24,7 +24,7 @@ BOOKING_TOOLS = ("book_hotel", "book_flight")
 
 
 class IntentDecision(BaseModel):
-    intent: Literal["hotel", "flight", "general", "ambiguous"] = Field(
+    intent: Literal["hotel", "flight", "weather", "general", "ambiguous"] = Field(
         default="general",
         description="Which specialist should answer the traveller.",
     )

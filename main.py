@@ -14,7 +14,7 @@ from entity import ChatRequest, ChatResponse
 from agents.graph import build_graph
 from agents.mcp_client import load_tools
 
-USER_FACING_NODES = ("hotel_agent", "flight_agent", "general_qa", "ambiguous")
+USER_FACING_NODES = ("hotel_agent", "flight_agent", "weather_agent", "general_qa", "ambiguous")
 
 GRAPH_CONFIG = {"recursion_limit": 12}
 
@@ -30,13 +30,14 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    hotel_tools, flight_tools = await load_tools()
+    hotel_tools, flight_tools, weather_tools = await load_tools()
     logger.info(
-        "loaded MCP tools hotel=%d flight=%d",
+        "loaded MCP tools hotel=%d flight=%d weather=%d",
         len(hotel_tools),
         len(flight_tools),
+        len(weather_tools),
     )
-    app.state.graph = build_graph(hotel_tools, flight_tools)
+    app.state.graph = build_graph(hotel_tools, flight_tools, weather_tools)
     yield
 
 
