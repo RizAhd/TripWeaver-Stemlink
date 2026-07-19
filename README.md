@@ -188,6 +188,10 @@ answers `{"status": "ok"}`.
 
 ## User guide
 
+You start on an empty conversation with a few suggestions to try.
+
+![The TripWeaver home screen](docs/home.png)
+
 Ask for what you want in plain language. Some examples:
 
 - `What is the best season to visit Japan?` goes to the general agent.
@@ -198,6 +202,12 @@ Ask for what you want in plain language. Some examples:
   books by position from the list you were just shown.
 - `Book a hotel in Tokyo` makes the agent ask for the details it still needs
   instead of guessing them.
+
+Anything the travel services return is also drawn as a card under the
+conversation, so prices and availability are readable at a glance rather than
+buried in the reply.
+
+![Flight results shown as cards](docs/results.png)
 
 While the assistant works, a panel appears for each stage and settles once that
 stage finishes:
@@ -212,3 +222,8 @@ stage finishes:
 
 If a travel service is unavailable the assistant says so plainly and the other
 specialist keeps working.
+
+The same layout reflows for a phone, so the conversation, the cards and the
+input all stay readable without sideways scrolling.
+
+![TripWeaver on a phone](docs/mobile.png)
