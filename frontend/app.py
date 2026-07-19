@@ -18,6 +18,7 @@ def backend_url() -> str:
 
 BACKEND_URL = backend_url()
 STREAM_URL = BACKEND_URL + "/chat/stream"
+TRANSCRIBE_URL = BACKEND_URL + "/transcribe"
 
 REQUEST_TIMEOUT = httpx.Timeout(180.0, connect=90.0)
 
@@ -96,6 +97,45 @@ def plain_history(history: List[dict]) -> List[Dict[str, str]]:
         if role in ("user", "assistant") and isinstance(content, str) and content:
             turns.append({"role": role, "content": content})
     return turns
+
+
+def join_text(typed: str, spoken: str) -> str:
+    typed = (typed or "").strip()
+    spoken = (spoken or "").strip()
+    if typed and spoken:
+        return "%s %s" % (typed, spoken)
+    return typed or spoken
+
+
+async def ask_for_transcript(audio_path: str) -> dict:
+    try:
+        with open(audio_path, "rb") as recording:
+            files = {"file": ("recording", recording, "application/octet-stream")}
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+                response = await client.post(TRANSCRIBE_URL, files=files)
+                response.raise_for_status()
+                return response.json()
+    except OSError:
+        return {"ok": False, "error": "I could not read that recording. Please try again."}
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in STARTING_UP:
+            return {"ok": False, "error": "The travel planner is still starting up. Please try again in a moment."}
+        return {"ok": False, "error": "The travel planner returned an error (%s). Please try again." % exc.response.status_code}
+    except httpx.RequestError:
+        return {"ok": False, "error": "I cannot reach the travel planner right now. Please try again shortly."}
+    except ValueError:
+        return {"ok": False, "error": "The travel planner sent a reply I could not read."}
+
+
+async def transcribe_clip(audio_path: str, typed: str):
+    if not audio_path:
+        return typed, "", None
+
+    payload = await ask_for_transcript(audio_path)
+    if not payload.get("ok"):
+        return typed, payload.get("error", "I could not use that recording."), None
+
+    return join_text(typed, payload.get("text", "")), "", None
 
 
 async def stream_events(message: str, history: List[dict], results: dict) -> AsyncIterator[dict]:
@@ -248,7 +288,7 @@ STARTERS = [
 
 
 def build_demo() -> gr.Blocks:
-    with gr.Blocks(title="TripWeaver") as demo:
+    with gr.Blocks(title="TripWeaver", delete_cache=(3600, 3600)) as demo:
         gr.Markdown(
             "# TripWeaver\nPlan flights and hotels in one conversation.",
             elem_id="tripweaver-header",
@@ -273,13 +313,30 @@ def build_demo() -> gr.Blocks:
             elem_id="tripweaver-results",
         )
 
-        gr.ChatInterface(
+        chat = gr.ChatInterface(
             fn=respond,
             chatbot=chatbot,
             additional_inputs=[results_state],
             additional_outputs=[results_state, results_panel],
             examples=STARTERS,
             api_name="chat",
+        )
+
+        microphone = gr.Audio(
+            sources=["microphone"],
+            type="filepath",
+            buttons=[],
+            show_label=False,
+            elem_id="tripweaver-mic",
+        )
+
+        voice_status = gr.Markdown("", elem_id="tripweaver-voice-status")
+
+        microphone.stop_recording(
+            fn=transcribe_clip,
+            inputs=[microphone, chat.textbox],
+            outputs=[chat.textbox, voice_status, microphone],
+            show_progress="minimal",
         )
 
     return demo
