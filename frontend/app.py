@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 from typing import AsyncIterator, Dict, List
@@ -5,6 +6,7 @@ from typing import AsyncIterator, Dict, List
 import gradio as gr
 import httpx
 
+import cards
 from theme import HEAD, TripWeaverTheme
 
 def backend_url() -> str:
@@ -16,8 +18,13 @@ def backend_url() -> str:
 
 BACKEND_URL = backend_url()
 STREAM_URL = BACKEND_URL + "/chat/stream"
+TRANSCRIBE_URL = BACKEND_URL + "/transcribe"
 
 REQUEST_TIMEOUT = httpx.Timeout(180.0, connect=90.0)
+
+STARTING_UP = (502, 503, 504)
+TRIES = 4
+PAUSE_BETWEEN_TRIES = 20
 
 EMPTY_RESULTS = {"hotel_results": [], "flight_results": [], "bookings": []}
 
@@ -35,11 +42,90 @@ CSS = """
 }
 #tripweaver-header p {margin: 0; color: #5b6b7a; font-size: 0.95rem;}
 
+#tripweaver-chat {border: none; background: transparent;}
+
+.tw-empty {max-width: 420px; margin: 0 auto; text-align: center; padding: 8px 16px;}
+.tw-empty-mark {
+  width: 46px; height: 46px; margin: 0 auto 16px auto;
+  border-radius: 13px; background: #0e7c86; color: #f6f3ec;
+  font-family: 'Fraunces', Georgia, serif; font-weight: 600;
+  font-size: 1.05rem; line-height: 46px; letter-spacing: 0.02em;
+}
+.tw-empty h2 {
+  font-family: 'Fraunces', Georgia, serif; font-weight: 600;
+  font-size: 1.35rem; color: #12212e; margin: 0 0 8px 0;
+}
+.tw-empty p {color: #5b6b7a; font-size: 0.93rem; line-height: 1.55; margin: 0;}
+
+.gradio-container .dataset {border: none !important; background: transparent !important; padding: 0 !important;}
+.gradio-container .dataset button,
+.gradio-container .dataset .gallery-item {
+  border: 1px solid #e2ded4 !important;
+  background: #ffffff !important;
+  border-radius: 999px !important;
+  padding: 7px 15px !important;
+  font-size: 0.86rem !important;
+  color: #12212e !important;
+  box-shadow: none !important;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.gradio-container .dataset button:hover,
+.gradio-container .dataset .gallery-item:hover {
+  border-color: #0e7c86 !important;
+  background: #f6f3ec !important;
+}
+
+.gradio-container .input-container:has(textarea) {
+  border: 1px solid #e2ded4 !important;
+  border-radius: 24px !important;
+  background: #ffffff !important;
+  box-shadow: 0 1px 2px rgba(18, 33, 46, 0.04);
+  padding: 4px 5px 4px 6px !important;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.gradio-container .input-container:has(textarea):focus-within {
+  border-color: #0e7c86 !important;
+  box-shadow: 0 0 0 3px rgba(14, 124, 134, 0.09);
+}
+.gradio-container .input-container:has(textarea) textarea {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 9px 6px 9px 10px !important;
+}
+.gradio-container .input-container:has(textarea) button {
+  border-radius: 999px !important;
+  min-width: 34px !important;
+  width: 34px !important;
+  height: 34px !important;
+  padding: 0 !important;
+  margin-bottom: 2px;
+}
+
+#tripweaver-mic {border: none !important; background: transparent !important; padding: 0 !important;}
+#tripweaver-mic .wrap, #tripweaver-mic .empty {border: none !important; background: transparent !important;}
+#tripweaver-mic .controls, #tripweaver-mic .waveform-container {border: none !important; background: transparent !important;}
+#tripweaver-mic button {
+  border: 1px solid #e2ded4 !important;
+  border-radius: 999px !important;
+  background: #ffffff !important;
+  color: #5b6b7a !important;
+  font-size: 0.84rem !important;
+  padding: 6px 14px !important;
+  box-shadow: none !important;
+}
+#tripweaver-mic button:hover {border-color: #0e7c86 !important; color: #12212e !important;}
+
+#tripweaver-voice-status {min-height: 0; padding: 0 4px;}
+#tripweaver-voice-status p {margin: 4px 0 0 0; color: #96543f; font-size: 0.83rem;}
+
 @media (max-width: 640px) {
   .gradio-container {padding: 0 10px !important;}
   #tripweaver-header {padding-top: 14px;}
   #tripweaver-header h1 {font-size: 1.55rem;}
   #tripweaver-header p {font-size: 0.88rem;}
+  .tw-empty h2 {font-size: 1.15rem;}
+  .gradio-container form, .gradio-container .input-container {border-radius: 20px !important;}
 }
 """
 
@@ -56,6 +142,45 @@ def plain_history(history: List[dict]) -> List[Dict[str, str]]:
         if role in ("user", "assistant") and isinstance(content, str) and content:
             turns.append({"role": role, "content": content})
     return turns
+
+
+def join_text(typed: str, spoken: str) -> str:
+    typed = (typed or "").strip()
+    spoken = (spoken or "").strip()
+    if typed and spoken:
+        return "%s %s" % (typed, spoken)
+    return typed or spoken
+
+
+async def ask_for_transcript(audio_path: str) -> dict:
+    try:
+        with open(audio_path, "rb") as recording:
+            files = {"file": ("recording", recording, "application/octet-stream")}
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+                response = await client.post(TRANSCRIBE_URL, files=files)
+                response.raise_for_status()
+                return response.json()
+    except OSError:
+        return {"ok": False, "error": "I could not read that recording. Please try again."}
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in STARTING_UP:
+            return {"ok": False, "error": "The travel planner is still starting up. Please try again in a moment."}
+        return {"ok": False, "error": "The travel planner returned an error (%s). Please try again." % exc.response.status_code}
+    except httpx.RequestError:
+        return {"ok": False, "error": "I cannot reach the travel planner right now. Please try again shortly."}
+    except ValueError:
+        return {"ok": False, "error": "The travel planner sent a reply I could not read."}
+
+
+async def transcribe_clip(audio_path: str, typed: str):
+    if not audio_path:
+        return typed, "", None
+
+    payload = await ask_for_transcript(audio_path)
+    if not payload.get("ok"):
+        return typed, payload.get("error", "I could not use that recording."), None
+
+    return join_text(typed, payload.get("text", "")), "", None
 
 
 async def stream_events(message: str, history: List[dict], results: dict) -> AsyncIterator[dict]:
@@ -75,12 +200,42 @@ async def stream_events(message: str, history: List[dict], results: dict) -> Asy
                     yield json.loads(line[6:])
 
 
-def panel(label: str) -> dict:
+PHASE_ICONS = {
+    "ROUTING": "*",
+    "SEARCHING": ">",
+    "BOOKING": "+",
+    "CLARIFYING": "?",
+    "RESPONDING": "-",
+    "WAKING": "~",
+}
+
+
+def panel(state: str, label: str) -> dict:
+    icon = PHASE_ICONS.get(state, "-")
     return {
         "role": "assistant",
         "content": "",
-        "metadata": {"title": label, "status": "pending"},
+        "metadata": {"title": "%s  %s" % (icon, label), "status": "pending"},
     }
+
+
+def note_tool(panels: List[dict], pending: dict, event: dict) -> None:
+    if not panels:
+        return
+
+    call_id = event.get("id", "")
+    name = event.get("name", "tool")
+    status = event.get("status", "")
+
+    if status == "INVOKED":
+        pending[call_id] = name
+        return
+
+    outcome = "failed" if status == "FAILED" else "done"
+    panels[-1]["metadata"]["log"] = "%s %s" % (pending.pop(call_id, name), outcome)
+    if status == "FAILED":
+        panels[-1]["metadata"]["title"] = panels[-1]["metadata"]["title"].split("  ", 1)[-1]
+        panels[-1]["metadata"]["title"] = "!  " + panels[-1]["metadata"]["title"]
 
 
 def settle(panels: List[dict]) -> None:
@@ -96,63 +251,89 @@ def rendered(panels: List[dict], reply: str) -> List[dict]:
 
 async def respond(message: str, history: List[dict], results: dict):
     results = results or dict(EMPTY_RESULTS)
-    panels: List[dict] = []
-    reply = ""
 
-    try:
-        async for event in stream_events(message, history, results):
-            kind = event.get("type")
+    for attempt in range(TRIES):
+        panels: List[dict] = []
+        pending_tools: Dict[str, str] = {}
+        reply = ""
 
-            if kind == "activity":
-                settle(panels)
-                panels.append(panel(event.get("label", event.get("state", "Working..."))))
+        try:
+            async for event in stream_events(message, history, results):
+                kind = event.get("type")
 
-            elif kind == "tool":
-                if panels:
-                    panels[-1]["metadata"]["log"] = "%s %s" % (
-                        event.get("name", "tool"),
-                        event.get("status", "").lower(),
-                    )
+                if kind == "activity":
+                    settle(panels)
+                    state = event.get("state", "")
+                    panels.append(panel(state, event.get("label", state or "Working...")))
 
-            elif kind == "token":
-                reply += event.get("text", "")
+                elif kind == "tool":
+                    note_tool(panels, pending_tools, event)
 
-            elif kind == "results":
-                results = {
-                    "hotel_results": event.get("hotel_results", []),
-                    "flight_results": event.get("flight_results", []),
-                    "bookings": event.get("bookings", []),
-                }
+                elif kind == "token":
+                    reply += event.get("text", "")
 
-            elif kind == "error":
-                reply = event.get("message", "Something went wrong. Please try again.")
+                elif kind == "results":
+                    results = {
+                        "hotel_results": event.get("hotel_results", []),
+                        "flight_results": event.get("flight_results", []),
+                        "bookings": event.get("bookings", []),
+                    }
 
-            yield rendered(panels, reply), results
+                elif kind == "error":
+                    reply = event.get("message", "Something went wrong. Please try again.")
 
-    except httpx.HTTPStatusError as exc:
+                yield rendered(panels, reply), results, cards.render(results)
+
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            settle(panels)
+            if status in STARTING_UP and not reply and attempt + 1 < TRIES:
+                waking = [panel("WAKING", "Waking the travel planner, this can take a minute...")]
+                yield rendered(waking, ""), results, cards.render(results)
+                await asyncio.sleep(PAUSE_BETWEEN_TRIES)
+                continue
+            if status == 404:
+                notice = (
+                    "The travel planner is not answering at %s. Check that BACKEND_URL "
+                    "points at the deployed backend." % BACKEND_URL
+                )
+            elif status in STARTING_UP:
+                notice = "The travel planner is still starting up. Please send that again in a moment."
+            else:
+                notice = "The travel planner returned an error (%s). Please try again." % status
+            yield rendered(panels, notice), results, cards.render(results)
+            return
+        except httpx.RequestError:
+            settle(panels)
+            yield rendered(panels, "I cannot reach the travel planner right now. Please try again shortly."), results, cards.render(results)
+            return
+
         settle(panels)
-        if exc.response.status_code == 404:
-            message = (
-                "The travel planner is not answering at %s. Check that BACKEND_URL "
-                "points at the deployed backend." % BACKEND_URL
-            )
-        else:
-            message = "The travel planner returned an error (%s). Please try again." % exc.response.status_code
-        yield rendered(panels, message), results
-        return
-    except httpx.RequestError:
-        settle(panels)
-        yield rendered(panels, "I cannot reach the travel planner right now. Please try again shortly."), results
+        if not reply:
+            reply = "I did not get a reply from the travel planner. Please try again."
+        yield rendered(panels, reply), results, cards.render(results)
         return
 
-    settle(panels)
-    if not reply:
-        reply = "I did not get a reply from the travel planner. Please try again."
-    yield rendered(panels, reply), results
+
+EMPTY_STATE = """
+<div class="tw-empty">
+  <div class="tw-empty-mark">TW</div>
+  <h2>Where are you going?</h2>
+  <p>Ask for hotels in a city or flights between two airports, and I will
+  search live availability and book on your behalf.</p>
+</div>
+"""
+
+STARTERS = [
+    ["Show me hotels in Tokyo", None],
+    ["Find flights from NRT to ICN", None],
+    ["Book the first one for me", None],
+    ["What is the best season to visit Japan?", None],
+]
 
 
 def build_demo() -> gr.Blocks:
-    with gr.Blocks(title="TripWeaver") as demo:
+    with gr.Blocks(title="TripWeaver", delete_cache=(3600, 3600)) as demo:
         gr.Markdown(
             "# TripWeaver\nPlan flights and hotels in one conversation.",
             elem_id="tripweaver-header",
@@ -161,24 +342,46 @@ def build_demo() -> gr.Blocks:
         results_state = gr.State(dict(EMPTY_RESULTS))
 
         chatbot = gr.Chatbot(
-            height="62vh",
-            label="TripWeaver",
-            placeholder="Ask about hotels, flights, or anything about your trip.",
-            layout="bubble",
+            height="60vh",
+            show_label=False,
+            placeholder=EMPTY_STATE,
+            layout="panel",
             buttons=["copy"],
+            avatar_images=(None, "assets/mark.svg"),
+            elem_id="tripweaver-chat",
         )
 
-        gr.ChatInterface(
+        results_panel = gr.HTML(
+            value="",
+            css_template=cards.CARD_CSS,
+            apply_default_css=False,
+            elem_id="tripweaver-results",
+        )
+
+        chat = gr.ChatInterface(
             fn=respond,
             chatbot=chatbot,
             additional_inputs=[results_state],
-            additional_outputs=[results_state],
-            examples=[
-                ["Show me hotels in Tokyo", None],
-                ["Find flights from NRT to ICN", None],
-                ["What is the best season to visit Japan?", None],
-            ],
+            additional_outputs=[results_state, results_panel],
+            examples=STARTERS,
             api_name="chat",
+        )
+
+        microphone = gr.Audio(
+            sources=["microphone"],
+            type="filepath",
+            buttons=[],
+            show_label=False,
+            elem_id="tripweaver-mic",
+        )
+
+        voice_status = gr.Markdown("", elem_id="tripweaver-voice-status")
+
+        microphone.stop_recording(
+            fn=transcribe_clip,
+            inputs=[microphone, chat.textbox],
+            outputs=[chat.textbox, voice_status, microphone],
+            show_progress="minimal",
         )
 
     return demo

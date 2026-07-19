@@ -3,6 +3,7 @@ set -u
 
 python -m mcp_servers.hotel_server &
 python -m mcp_servers.flight_server &
+python -m mcp_servers.weather_server &
 
 wait_for_port() {
     local port="$1"
@@ -19,5 +20,6 @@ wait_for_port() {
 
 wait_for_port 8001 || true
 wait_for_port 8002 || true
+wait_for_port 8003 || true
 
 exec python -m uvicorn main:app --host 0.0.0.0 --port "${PORT:-7860}"

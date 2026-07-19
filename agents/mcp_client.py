@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 HOTEL_SERVER = "hotel"
 FLIGHT_SERVER = "flight"
+WEATHER_SERVER = "weather"
 
 
 def connections() -> Dict[str, dict]:
@@ -21,6 +22,10 @@ def connections() -> Dict[str, dict]:
             "transport": "streamable_http",
             "url": os.getenv("FLIGHT_MCP_URL", "http://127.0.0.1:8002/mcp"),
         },
+        WEATHER_SERVER: {
+            "transport": "streamable_http",
+            "url": os.getenv("WEATHER_MCP_URL", "http://127.0.0.1:8003/mcp"),
+        },
     }
 
 
@@ -32,8 +37,9 @@ async def _tools_from(client: MultiServerMCPClient, server_name: str) -> List[Ba
         return []
 
 
-async def load_tools() -> Tuple[List[BaseTool], List[BaseTool]]:
+async def load_tools() -> Tuple[List[BaseTool], List[BaseTool], List[BaseTool]]:
     client = MultiServerMCPClient(connections())
     hotel_tools = await _tools_from(client, HOTEL_SERVER)
     flight_tools = await _tools_from(client, FLIGHT_SERVER)
-    return hotel_tools, flight_tools
+    weather_tools = await _tools_from(client, WEATHER_SERVER)
+    return hotel_tools, flight_tools, weather_tools

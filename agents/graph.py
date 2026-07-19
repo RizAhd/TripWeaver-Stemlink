@@ -19,6 +19,8 @@ from .prompts import (
     FLIGHT_UNAVAILABLE,
     HOTEL_AGENT_PROMPT,
     HOTEL_UNAVAILABLE,
+    WEATHER_AGENT_PROMPT,
+    WEATHER_UNAVAILABLE,
 )
 
 
@@ -46,7 +48,11 @@ def _add_domain(
     builder.add_edge(tools_node, agent_node)
 
 
-def build_graph(hotel_tools: List[BaseTool], flight_tools: List[BaseTool]):
+def build_graph(
+    hotel_tools: List[BaseTool],
+    flight_tools: List[BaseTool],
+    weather_tools: List[BaseTool],
+):
     builder = StateGraph(GraphState)
 
     builder.add_node("router", router)
@@ -73,6 +79,16 @@ def build_graph(hotel_tools: List[BaseTool], flight_tools: List[BaseTool]):
         "Searching flight options...",
         "Booking flight...",
     )
+    _add_domain(
+        builder,
+        "weather",
+        weather_tools,
+        WEATHER_AGENT_PROMPT,
+        WEATHER_UNAVAILABLE,
+        "Working on your weather request...",
+        "Checking the forecast...",
+        "Checking the forecast...",
+    )
 
     builder.add_edge(START, "router")
     builder.add_conditional_edges(
@@ -81,6 +97,7 @@ def build_graph(hotel_tools: List[BaseTool], flight_tools: List[BaseTool]):
         {
             "hotel": "hotel_agent",
             "flight": "flight_agent",
+            "weather": "weather_agent",
             "general": "general_qa",
             "ambiguous": "ambiguous",
         },

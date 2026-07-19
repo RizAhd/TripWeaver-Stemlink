@@ -25,16 +25,16 @@ jobs:
           pip install -r frontend/requirements.txt
 
       - name: Compile every source file
-        run: python -m compileall -q agents mcp_servers frontend main.py entity.py
+        run: python -m compileall -q agents mcp_servers frontend main.py entity.py speech.py
 
       - name: Import the backend and the MCP servers
         env:
           CONVEX_BASE_URL: https://standing-fish-574.convex.site
           OPENAI_API_KEY: not-a-real-key-import-check-only
         run: |
-          python -c "import main"
+          python -c "import main, speech"
           python -c "import agents.graph, agents.nodes, agents.mcp_client"
-          python -c "import mcp_servers.hotel_server, mcp_servers.flight_server"
+          python -c "import mcp_servers.hotel_server, mcp_servers.flight_server, mcp_servers.weather_server"
 
       - name: Import the frontend
         env:
