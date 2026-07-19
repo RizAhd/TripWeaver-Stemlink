@@ -29,9 +29,18 @@ CARD_CSS = """
 .tw-pill-booked {background: #0e7c86; color: #f6f3ec;}
 .tw-more {color: #5b6b7a; font-size: 0.8rem; padding-left: 2px;}
 
+@media (min-width: 720px) {
+  .tw-cards {display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;}
+}
+
 @media (max-width: 640px) {
   .tw-card {flex-direction: column; gap: 6px;}
   .tw-card-side {text-align: left;}
+}
+
+@media (max-width: 420px) {
+  .tw-card {padding: 11px 12px;}
+  .tw-cards-title {margin-top: 12px;}
 }
 """
 

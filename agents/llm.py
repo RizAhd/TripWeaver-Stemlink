@@ -8,9 +8,10 @@ ENV_PATH = BASE_DIR / ".env"
 
 load_dotenv(dotenv_path=ENV_PATH)
 
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 llm = ChatOpenAI(
     model=MODEL_NAME,
-    temperature=0
+    temperature=0,
+    streaming=True
 )

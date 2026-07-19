@@ -20,9 +20,3 @@ class ChatResponse(BaseModel):
     hotel_results: List[dict] = []
     flight_results: List[dict] = []
     bookings: List[dict] = []
-
-
-class TranscriptResponse(BaseModel):
-    ok: bool = False
-    text: str = ""
-    error: str = ""

@@ -18,7 +18,6 @@ def backend_url() -> str:
 
 BACKEND_URL = backend_url()
 STREAM_URL = BACKEND_URL + "/chat/stream"
-TRANSCRIBE_URL = BACKEND_URL + "/transcribe"
 
 REQUEST_TIMEOUT = httpx.Timeout(180.0, connect=90.0)
 
@@ -42,7 +41,11 @@ CSS = """
 }
 #tripweaver-header p {margin: 0; color: #5b6b7a; font-size: 0.95rem;}
 
-#tripweaver-chat {border: none; background: transparent;}
+#tripweaver-chat {border: none; background: transparent; min-height: 300px;}
+
+@supports (height: 100dvh) {
+  #tripweaver-chat {height: 60dvh !important;}
+}
 
 .tw-empty {max-width: 420px; margin: 0 auto; text-align: center; padding: 8px 16px;}
 .tw-empty-mark {
@@ -102,22 +105,11 @@ CSS = """
   margin-bottom: 2px;
 }
 
-#tripweaver-mic {border: none !important; background: transparent !important; padding: 0 !important;}
-#tripweaver-mic .wrap, #tripweaver-mic .empty {border: none !important; background: transparent !important;}
-#tripweaver-mic .controls, #tripweaver-mic .waveform-container {border: none !important; background: transparent !important;}
-#tripweaver-mic button {
-  border: 1px solid #e2ded4 !important;
-  border-radius: 999px !important;
-  background: #ffffff !important;
-  color: #5b6b7a !important;
-  font-size: 0.84rem !important;
-  padding: 6px 14px !important;
-  box-shadow: none !important;
-}
-#tripweaver-mic button:hover {border-color: #0e7c86 !important; color: #12212e !important;}
 
-#tripweaver-voice-status {min-height: 0; padding: 0 4px;}
-#tripweaver-voice-status p {margin: 4px 0 0 0; color: #96543f; font-size: 0.83rem;}
+@media (max-width: 900px) {
+  .gradio-container {max-width: 100% !important; padding: 0 18px !important;}
+  #tripweaver-header h1 {font-size: 1.85rem;}
+}
 
 @media (max-width: 640px) {
   .gradio-container {padding: 0 10px !important;}
@@ -125,7 +117,21 @@ CSS = """
   #tripweaver-header h1 {font-size: 1.55rem;}
   #tripweaver-header p {font-size: 0.88rem;}
   .tw-empty h2 {font-size: 1.15rem;}
-  .gradio-container form, .gradio-container .input-container {border-radius: 20px !important;}
+  .gradio-container .input-container:has(textarea) {border-radius: 20px !important;}
+  .gradio-container .dataset button,
+  .gradio-container .dataset .gallery-item {padding: 6px 12px !important; font-size: 0.8rem !important;}
+}
+
+@media (max-width: 420px) {
+  .gradio-container {padding: 0 6px !important;}
+  #tripweaver-header {padding: 10px 2px 8px 2px;}
+  #tripweaver-header h1 {font-size: 1.3rem;}
+  #tripweaver-header p {font-size: 0.82rem;}
+  .tw-empty {padding: 4px 8px;}
+  .tw-empty-mark {width: 38px; height: 38px; line-height: 38px; margin-bottom: 12px;}
+  .tw-empty h2 {font-size: 1.05rem;}
+  .tw-empty p {font-size: 0.86rem;}
+  .gradio-container .input-container:has(textarea) textarea {padding: 8px 4px 8px 8px !important;}
 }
 """
 
@@ -142,45 +148,6 @@ def plain_history(history: List[dict]) -> List[Dict[str, str]]:
         if role in ("user", "assistant") and isinstance(content, str) and content:
             turns.append({"role": role, "content": content})
     return turns
-
-
-def join_text(typed: str, spoken: str) -> str:
-    typed = (typed or "").strip()
-    spoken = (spoken or "").strip()
-    if typed and spoken:
-        return "%s %s" % (typed, spoken)
-    return typed or spoken
-
-
-async def ask_for_transcript(audio_path: str) -> dict:
-    try:
-        with open(audio_path, "rb") as recording:
-            files = {"file": ("recording", recording, "application/octet-stream")}
-            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-                response = await client.post(TRANSCRIBE_URL, files=files)
-                response.raise_for_status()
-                return response.json()
-    except OSError:
-        return {"ok": False, "error": "I could not read that recording. Please try again."}
-    except httpx.HTTPStatusError as exc:
-        if exc.response.status_code in STARTING_UP:
-            return {"ok": False, "error": "The travel planner is still starting up. Please try again in a moment."}
-        return {"ok": False, "error": "The travel planner returned an error (%s). Please try again." % exc.response.status_code}
-    except httpx.RequestError:
-        return {"ok": False, "error": "I cannot reach the travel planner right now. Please try again shortly."}
-    except ValueError:
-        return {"ok": False, "error": "The travel planner sent a reply I could not read."}
-
-
-async def transcribe_clip(audio_path: str, typed: str):
-    if not audio_path:
-        return typed, "", None
-
-    payload = await ask_for_transcript(audio_path)
-    if not payload.get("ok"):
-        return typed, payload.get("error", "I could not use that recording."), None
-
-    return join_text(typed, payload.get("text", "")), "", None
 
 
 async def stream_events(message: str, history: List[dict], results: dict) -> AsyncIterator[dict]:
@@ -307,6 +274,10 @@ async def respond(message: str, history: List[dict], results: dict):
             settle(panels)
             yield rendered(panels, "I cannot reach the travel planner right now. Please try again shortly."), results, cards.render(results)
             return
+        except ValueError:
+            settle(panels)
+            yield rendered(panels, "The travel planner sent a reply I could not read. Please try again."), results, cards.render(results)
+            return
 
         settle(panels)
         if not reply:
@@ -333,7 +304,7 @@ STARTERS = [
 
 
 def build_demo() -> gr.Blocks:
-    with gr.Blocks(title="TripWeaver", delete_cache=(3600, 3600)) as demo:
+    with gr.Blocks(title="TripWeaver") as demo:
         gr.Markdown(
             "# TripWeaver\nPlan flights and hotels in one conversation.",
             elem_id="tripweaver-header",
@@ -365,23 +336,6 @@ def build_demo() -> gr.Blocks:
             additional_outputs=[results_state, results_panel],
             examples=STARTERS,
             api_name="chat",
-        )
-
-        microphone = gr.Audio(
-            sources=["microphone"],
-            type="filepath",
-            buttons=[],
-            show_label=False,
-            elem_id="tripweaver-mic",
-        )
-
-        voice_status = gr.Markdown("", elem_id="tripweaver-voice-status")
-
-        microphone.stop_recording(
-            fn=transcribe_clip,
-            inputs=[microphone, chat.textbox],
-            outputs=[chat.textbox, voice_status, microphone],
-            show_progress="minimal",
         )
 
     return demo
