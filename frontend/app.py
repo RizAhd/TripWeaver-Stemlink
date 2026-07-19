@@ -1,0 +1,167 @@
+import json
+import os
+from typing import AsyncIterator, Dict, List
+
+import gradio as gr
+import httpx
+
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
+STREAM_URL = BACKEND_URL + "/chat/stream"
+
+REQUEST_TIMEOUT = httpx.Timeout(180.0, connect=15.0)
+
+EMPTY_RESULTS = {"hotel_results": [], "flight_results": [], "bookings": []}
+
+CSS = """
+.gradio-container {max-width: 1000px !important;}
+#tripweaver-header {text-align: center; padding: 8px 0 2px 0;}
+#tripweaver-header h1 {margin-bottom: 2px; font-size: 1.9rem;}
+#tripweaver-header p {margin-top: 0; opacity: 0.75;}
+footer {display: none !important;}
+@media (max-width: 640px) {
+  .gradio-container {padding: 4px !important;}
+  #tripweaver-header h1 {font-size: 1.4rem;}
+}
+"""
+
+
+def plain_history(history: List[dict]) -> List[Dict[str, str]]:
+    turns = []
+    for message in history or []:
+        if not isinstance(message, dict):
+            continue
+        if (message.get("metadata") or {}).get("title"):
+            continue
+        role = message.get("role")
+        content = message.get("content")
+        if role in ("user", "assistant") and isinstance(content, str) and content:
+            turns.append({"role": role, "content": content})
+    return turns
+
+
+async def stream_events(message: str, history: List[dict], results: dict) -> AsyncIterator[dict]:
+    payload = {
+        "message": message,
+        "history": plain_history(history),
+        "hotel_results": results.get("hotel_results", []),
+        "flight_results": results.get("flight_results", []),
+        "bookings": results.get("bookings", []),
+    }
+
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+        async with client.stream("POST", STREAM_URL, json=payload) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if line.startswith("data: "):
+                    yield json.loads(line[6:])
+
+
+def panel(label: str) -> dict:
+    return {
+        "role": "assistant",
+        "content": "",
+        "metadata": {"title": label, "status": "pending"},
+    }
+
+
+def settle(panels: List[dict]) -> None:
+    for item in panels:
+        item["metadata"]["status"] = "done"
+
+
+def rendered(panels: List[dict], reply: str) -> List[dict]:
+    if reply:
+        return panels + [{"role": "assistant", "content": reply}]
+    return list(panels)
+
+
+async def respond(message: str, history: List[dict], results: dict):
+    results = results or dict(EMPTY_RESULTS)
+    panels: List[dict] = []
+    reply = ""
+
+    try:
+        async for event in stream_events(message, history, results):
+            kind = event.get("type")
+
+            if kind == "activity":
+                settle(panels)
+                panels.append(panel(event.get("label", event.get("state", "Working..."))))
+
+            elif kind == "tool":
+                if panels:
+                    panels[-1]["metadata"]["log"] = "%s %s" % (
+                        event.get("name", "tool"),
+                        event.get("status", "").lower(),
+                    )
+
+            elif kind == "token":
+                reply += event.get("text", "")
+
+            elif kind == "results":
+                results = {
+                    "hotel_results": event.get("hotel_results", []),
+                    "flight_results": event.get("flight_results", []),
+                    "bookings": event.get("bookings", []),
+                }
+
+            elif kind == "error":
+                reply = event.get("message", "Something went wrong. Please try again.")
+
+            yield rendered(panels, reply), results
+
+    except httpx.HTTPStatusError:
+        settle(panels)
+        yield rendered(panels, "The travel planner returned an error. Please try again."), results
+        return
+    except httpx.RequestError:
+        settle(panels)
+        yield rendered(panels, "I cannot reach the travel planner right now. Please try again shortly."), results
+        return
+
+    settle(panels)
+    if not reply:
+        reply = "I did not get a reply from the travel planner. Please try again."
+    yield rendered(panels, reply), results
+
+
+def build_demo() -> gr.Blocks:
+    with gr.Blocks(title="TripWeaver") as demo:
+        gr.Markdown(
+            "# TripWeaver\nPlan flights and hotels in one conversation.",
+            elem_id="tripweaver-header",
+        )
+
+        results_state = gr.State(dict(EMPTY_RESULTS))
+
+        chatbot = gr.Chatbot(
+            height="62vh",
+            label="TripWeaver",
+            placeholder="Ask about hotels, flights, or anything about your trip.",
+            layout="bubble",
+            buttons=["copy"],
+        )
+
+        gr.ChatInterface(
+            fn=respond,
+            chatbot=chatbot,
+            additional_inputs=[results_state],
+            additional_outputs=[results_state],
+            examples=[
+                ["Show me hotels in Tokyo", None],
+                ["Find flights from NRT to ICN", None],
+                ["What is the best season to visit Japan?", None],
+            ],
+            api_name="chat",
+        )
+
+    return demo
+
+
+if __name__ == "__main__":
+    build_demo().launch(
+        theme=gr.themes.Soft(primary_hue="sky", secondary_hue="teal"),
+        css=CSS,
+        server_name="0.0.0.0",
+        server_port=int(os.environ.get("PORT", "7860")),
+    )

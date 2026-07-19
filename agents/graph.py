@@ -2,17 +2,17 @@ from typing import List
 
 from langchain_core.tools import BaseTool
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.prebuilt import tools_condition
 
 from .entity import GraphState
 from .nodes import (
     ambiguous_agent,
     general_qa,
     make_agent,
+    make_tool_runner,
     make_unavailable_agent,
     route_by_intent,
     router,
-    tool_error_message,
 )
 from .prompts import (
     FLIGHT_AGENT_PROMPT,
@@ -29,6 +29,8 @@ def _add_domain(
     prompt_template: str,
     unavailable_message: str,
     activity_label: str,
+    searching_label: str,
+    booking_label: str,
 ) -> None:
     agent_node = domain + "_agent"
 
@@ -39,7 +41,7 @@ def _add_domain(
 
     tools_node = domain + "_tools"
     builder.add_node(agent_node, make_agent(tools, prompt_template, activity_label))
-    builder.add_node(tools_node, ToolNode(tools, handle_tool_errors=tool_error_message))
+    builder.add_node(tools_node, make_tool_runner(tools, searching_label, booking_label))
     builder.add_conditional_edges(agent_node, tools_condition, {"tools": tools_node, END: END})
     builder.add_edge(tools_node, agent_node)
 
@@ -57,7 +59,9 @@ def build_graph(hotel_tools: List[BaseTool], flight_tools: List[BaseTool]):
         hotel_tools,
         HOTEL_AGENT_PROMPT,
         HOTEL_UNAVAILABLE,
+        "Working on your hotel request...",
         "Searching hotel suggestions...",
+        "Booking hotel...",
     )
     _add_domain(
         builder,
@@ -65,7 +69,9 @@ def build_graph(hotel_tools: List[BaseTool], flight_tools: List[BaseTool]):
         flight_tools,
         FLIGHT_AGENT_PROMPT,
         FLIGHT_UNAVAILABLE,
+        "Working on your flight request...",
         "Searching flight options...",
+        "Booking flight...",
     )
 
     builder.add_edge(START, "router")
