@@ -1,7 +1,7 @@
 import json
 from typing import List, Literal, Optional
 
-from langchain_core.messages import AIMessage, AnyMessage, SystemMessage
+from langchain_core.messages import AIMessage, AnyMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
 from langgraph.config import get_stream_writer
 from langgraph.prebuilt import ToolNode
@@ -192,7 +192,7 @@ def _announce(state: GraphState, response: AIMessage, writer) -> None:
         return
 
     answered_from_tools = any(
-        message.__class__.__name__ == "ToolMessage" for message in state["messages"]
+        isinstance(message, ToolMessage) for message in state["messages"]
     )
     if answered_from_tools:
         return

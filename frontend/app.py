@@ -20,13 +20,12 @@ REQUEST_TIMEOUT = httpx.Timeout(180.0, connect=90.0)
 EMPTY_RESULTS = {"hotel_results": [], "flight_results": [], "bookings": []}
 
 CSS = """
-.gradio-container {max-width: 1000px !important;}
+.gradio-container {max-width: 1000px !important; width: 100% !important; margin-left: auto !important; margin-right: auto !important;}
 #tripweaver-header {text-align: center; padding: 8px 0 2px 0;}
 #tripweaver-header h1 {margin-bottom: 2px; font-size: 1.9rem;}
 #tripweaver-header p {margin-top: 0; opacity: 0.75;}
 footer {display: none !important;}
 @media (max-width: 640px) {
-  .gradio-container {padding: 4px !important;}
   #tripweaver-header h1 {font-size: 1.4rem;}
 }
 """
