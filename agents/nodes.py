@@ -1,4 +1,6 @@
 import json
+import logging
+import time
 from typing import List, Literal, Optional
 
 from langchain_core.messages import AIMessage, AnyMessage, SystemMessage, ToolMessage
@@ -15,6 +17,8 @@ from .prompts import (
     ROUTER_PROMPT,
     agent_prompt,
 )
+
+logger = logging.getLogger(__name__)
 
 BOOKING_TOOLS = ("book_hotel", "book_flight")
 
@@ -177,8 +181,10 @@ async def router(state: GraphState) -> dict:
     try:
         decision = await intent_classifier.ainvoke(messages)
         intent = decision.intent
+        logger.info("routed intent=%s turns=%d", intent, len(state["messages"]))
     except Exception:
         intent = "general"
+        logger.warning("intent classification failed, defaulting to general", exc_info=True)
 
     return {"intent": intent}
 
@@ -237,19 +243,25 @@ def make_tool_runner(tools: List[BaseTool], searching_label: str, booking_label:
                 }
             )
             writer({"type": "tool", "id": call["id"], "name": call["name"], "status": "INVOKED"})
+            logger.info("tool invoked name=%s args=%s", call["name"], sorted(call.get("args", {})))
 
+        started = time.perf_counter()
         result = await node.ainvoke(state)
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
         messages = result["messages"]
 
         for message in messages:
+            name = getattr(message, "name", "")
+            status = "SUCCEEDED" if tool_succeeded(message) else "FAILED"
             writer(
                 {
                     "type": "tool",
                     "id": getattr(message, "tool_call_id", ""),
-                    "name": getattr(message, "name", ""),
-                    "status": "SUCCEEDED" if tool_succeeded(message) else "FAILED",
+                    "name": name,
+                    "status": status,
                 }
             )
+            logger.info("tool %s name=%s in %dms", status.lower(), name, elapsed_ms)
 
         return {"messages": messages, **collect_results(state, messages)}
 

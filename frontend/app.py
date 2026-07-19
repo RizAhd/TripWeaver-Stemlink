@@ -5,6 +5,8 @@ from typing import AsyncIterator, Dict, List
 import gradio as gr
 import httpx
 
+from theme import HEAD, TripWeaverTheme
+
 def backend_url() -> str:
     url = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").strip().rstrip("/")
     if not url.startswith("http://") and not url.startswith("https://"):
@@ -20,13 +22,24 @@ REQUEST_TIMEOUT = httpx.Timeout(180.0, connect=90.0)
 EMPTY_RESULTS = {"hotel_results": [], "flight_results": [], "bookings": []}
 
 CSS = """
-.gradio-container {max-width: 1000px !important; width: 100% !important; margin-left: auto !important; margin-right: auto !important;}
-#tripweaver-header {text-align: center; padding: 8px 0 2px 0;}
-#tripweaver-header h1 {margin-bottom: 2px; font-size: 1.9rem;}
-#tripweaver-header p {margin-top: 0; opacity: 0.75;}
-footer {display: none !important;}
+.gradio-container {max-width: 980px !important; width: 100% !important; margin-left: auto !important; margin-right: auto !important;}
+
+#tripweaver-header {padding: 22px 4px 10px 4px; border-bottom: 1px solid #e2ded4;}
+#tripweaver-header h1 {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 600;
+  font-size: 2.1rem;
+  letter-spacing: -0.015em;
+  margin: 0 0 4px 0;
+  color: #12212e;
+}
+#tripweaver-header p {margin: 0; color: #5b6b7a; font-size: 0.95rem;}
+
 @media (max-width: 640px) {
-  #tripweaver-header h1 {font-size: 1.4rem;}
+  .gradio-container {padding: 0 10px !important;}
+  #tripweaver-header {padding-top: 14px;}
+  #tripweaver-header h1 {font-size: 1.55rem;}
+  #tripweaver-header p {font-size: 0.88rem;}
 }
 """
 
@@ -173,8 +186,10 @@ def build_demo() -> gr.Blocks:
 
 if __name__ == "__main__":
     build_demo().launch(
-        theme=gr.themes.Soft(primary_hue="sky", secondary_hue="teal"),
+        theme=TripWeaverTheme(),
         css=CSS,
+        head=HEAD,
+        footer_links=[],
         server_name="0.0.0.0",
         server_port=int(os.environ.get("PORT", "7860")),
     )

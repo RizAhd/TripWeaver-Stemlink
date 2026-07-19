@@ -1,3 +1,5 @@
+import logging
+import os
 from contextlib import asynccontextmanager
 from typing import List
 
@@ -18,10 +20,22 @@ GRAPH_CONFIG = {"recursion_limit": 12}
 
 UNEXPECTED_ERROR = "Something went wrong while planning your trip. Please try again."
 
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)-8s %(name)s %(message)s",
+)
+
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     hotel_tools, flight_tools = await load_tools()
+    logger.info(
+        "loaded MCP tools hotel=%d flight=%d",
+        len(hotel_tools),
+        len(flight_tools),
+    )
     app.state.graph = build_graph(hotel_tools, flight_tools)
     yield
 
@@ -133,8 +147,10 @@ async def chat_stream(request: ChatRequest):
         yield ServerSentEvent(data={"type": "done"})
 
     except ClientDisconnect:
+        logger.info("client disconnected mid stream")
         return
     except Exception:
+        logger.exception("chat stream failed")
         yield ServerSentEvent(
             data={"type": "error", "message": UNEXPECTED_ERROR}
         )
