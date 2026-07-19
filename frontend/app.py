@@ -35,11 +35,45 @@ CSS = """
 }
 #tripweaver-header p {margin: 0; color: #5b6b7a; font-size: 0.95rem;}
 
+#tripweaver-chat {border: none; background: transparent;}
+
+.tw-empty {max-width: 420px; margin: 0 auto; text-align: center; padding: 8px 16px;}
+.tw-empty-mark {
+  width: 46px; height: 46px; margin: 0 auto 16px auto;
+  border-radius: 13px; background: #0e7c86; color: #f6f3ec;
+  font-family: 'Fraunces', Georgia, serif; font-weight: 600;
+  font-size: 1.05rem; line-height: 46px; letter-spacing: 0.02em;
+}
+.tw-empty h2 {
+  font-family: 'Fraunces', Georgia, serif; font-weight: 600;
+  font-size: 1.35rem; color: #12212e; margin: 0 0 8px 0;
+}
+.tw-empty p {color: #5b6b7a; font-size: 0.93rem; line-height: 1.55; margin: 0;}
+
+.gradio-container .dataset {border: none !important; background: transparent !important; padding: 0 !important;}
+.gradio-container .dataset button,
+.gradio-container .dataset .gallery-item {
+  border: 1px solid #e2ded4 !important;
+  background: #ffffff !important;
+  border-radius: 999px !important;
+  padding: 7px 15px !important;
+  font-size: 0.86rem !important;
+  color: #12212e !important;
+  box-shadow: none !important;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.gradio-container .dataset button:hover,
+.gradio-container .dataset .gallery-item:hover {
+  border-color: #0e7c86 !important;
+  background: #f6f3ec !important;
+}
+
 @media (max-width: 640px) {
   .gradio-container {padding: 0 10px !important;}
   #tripweaver-header {padding-top: 14px;}
   #tripweaver-header h1 {font-size: 1.55rem;}
   #tripweaver-header p {font-size: 0.88rem;}
+  .tw-empty h2 {font-size: 1.15rem;}
 }
 """
 
@@ -151,6 +185,23 @@ async def respond(message: str, history: List[dict], results: dict):
     yield rendered(panels, reply), results
 
 
+EMPTY_STATE = """
+<div class="tw-empty">
+  <div class="tw-empty-mark">TW</div>
+  <h2>Where are you going?</h2>
+  <p>Ask for hotels in a city or flights between two airports, and I will
+  search live availability and book on your behalf.</p>
+</div>
+"""
+
+STARTERS = [
+    ["Show me hotels in Tokyo", None],
+    ["Find flights from NRT to ICN", None],
+    ["Book the first one for me", None],
+    ["What is the best season to visit Japan?", None],
+]
+
+
 def build_demo() -> gr.Blocks:
     with gr.Blocks(title="TripWeaver") as demo:
         gr.Markdown(
@@ -161,11 +212,13 @@ def build_demo() -> gr.Blocks:
         results_state = gr.State(dict(EMPTY_RESULTS))
 
         chatbot = gr.Chatbot(
-            height="62vh",
-            label="TripWeaver",
-            placeholder="Ask about hotels, flights, or anything about your trip.",
-            layout="bubble",
+            height="60vh",
+            show_label=False,
+            placeholder=EMPTY_STATE,
+            layout="panel",
             buttons=["copy"],
+            avatar_images=(None, "assets/mark.svg"),
+            elem_id="tripweaver-chat",
         )
 
         gr.ChatInterface(
@@ -173,11 +226,7 @@ def build_demo() -> gr.Blocks:
             chatbot=chatbot,
             additional_inputs=[results_state],
             additional_outputs=[results_state],
-            examples=[
-                ["Show me hotels in Tokyo", None],
-                ["Find flights from NRT to ICN", None],
-                ["What is the best season to visit Japan?", None],
-            ],
+            examples=STARTERS,
             api_name="chat",
         )
 
