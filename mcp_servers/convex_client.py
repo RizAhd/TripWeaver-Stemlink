@@ -1,7 +1,14 @@
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
+from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+ENV_PATH = BASE_DIR / ".env"
+
+load_dotenv(dotenv_path=ENV_PATH)
 
 TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 
@@ -37,7 +44,9 @@ def _detail(response: httpx.Response) -> str:
     if "ArgumentValidationError" in message or "Validator:" in message:
         return "One of the supplied identifiers is not valid."
 
-    if len(message) > 200 or "\n" in message:
+    message = message.split("\n", 1)[0].replace("Uncaught Error:", "").strip()
+
+    if not message or len(message) > 200:
         return ""
 
     return message

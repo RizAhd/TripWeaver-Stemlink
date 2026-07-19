@@ -71,8 +71,8 @@ def build_state(request: ChatRequest) -> dict:
 
 
 @app.get("/")
-async def hello():
-    return {"message": "Hello, World!"}
+async def index():
+    return {"service": "TripWeaver", "health": "/health", "chat": "/chat/stream"}
 
 
 @app.get("/health")
